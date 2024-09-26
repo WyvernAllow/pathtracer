@@ -85,6 +85,46 @@ static VkDebugUtilsMessengerEXT create_messenger(VkInstance instance, const VkDe
     return messenger;
 }
 
+static int rate_physical_device(VkPhysicalDevice physical_device) {
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(physical_device, &properties);
+
+    int score = 0;
+    if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        score += 100;
+    }
+
+    return score;
+}
+
+static VkPhysicalDevice find_physical_device(VkInstance instance) {
+    uint32_t physical_device_count;
+    vkEnumeratePhysicalDevices(instance, &physical_device_count, NULL);
+
+    VkPhysicalDevice *physical_devices = malloc(sizeof(VkPhysicalDevice) * physical_device_count);
+    if(!physical_devices) {
+        fprintf(stderr, "Failed to find a physical device: out of memory");
+        return NULL;
+    }
+
+    vkEnumeratePhysicalDevices(instance, &physical_device_count, physical_devices);
+
+    int highest_score = INT_MIN;
+    VkPhysicalDevice best_physical_device = NULL;
+
+    for(uint32_t i = 0; i < physical_device_count; i++) {
+        VkPhysicalDevice physical_device = physical_devices[i];
+        int score = rate_physical_device(physical_device);
+        if(score > highest_score) {
+            highest_score = score;
+            best_physical_device = physical_device;
+        }
+    }
+
+    free(physical_devices);
+    return best_physical_device;
+}
+
 int main() {
     const VkDebugUtilsMessengerCreateInfoEXT debug_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -112,6 +152,14 @@ int main() {
         return EXIT_FAILURE;
     }
 
+    VkPhysicalDevice physical_device = find_physical_device(instance);
+    if(!physical_device) {
+        fprintf(stderr, "Failed to find a suitable physical device");
+        return EXIT_FAILURE;
+    }
+
+    
+    
     vkDestroyDebugUtilsMessengerEXT(instance, messenger, NULL);
     vkDestroyInstance(instance, NULL);
     return EXIT_SUCCESS;
