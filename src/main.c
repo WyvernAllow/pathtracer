@@ -74,7 +74,7 @@ static VkInstance create_instance(const VkDebugUtilsMessengerCreateInfoEXT *debu
     return instance;
 }
 
-VkDebugUtilsMessengerEXT create_messenger(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *debug_info) {
+static VkDebugUtilsMessengerEXT create_messenger(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *debug_info) {
     VkDebugUtilsMessengerEXT messenger;
     VkResult result = vkCreateDebugUtilsMessengerEXT(instance, debug_info, NULL, &messenger);
     if(result != VK_SUCCESS) {
