@@ -126,7 +126,13 @@ vec3 trace(vec3 ray_orig, vec3 ray_dir, inout uint state) {
 #define GAMMA 2.2
 
 vec3 tonemap(vec3 color) {
-    return color / (color + vec3(1.0));
+    const float A = 2.51;
+    const float B = 0.03;
+    const float C = 2.43;
+    const float D = 0.59;
+    const float E = 0.14;
+
+    return clamp((color * (A * color + B)) / (color * (C * color + D) + E), 0.0, 1.0);
 }
 
 vec3 apply_gamma_correction(vec3 color) {
