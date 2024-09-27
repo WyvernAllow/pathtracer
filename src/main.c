@@ -14,6 +14,9 @@ static const char *EXTENSIONS[] = {
     VK_EXT_DEBUG_UTILS_EXTENSION_NAME
 };
 
+static const uint32_t IMAGE_WIDTH = 4096;
+static const uint32_t IMAGE_HEIGHT = 4096;
+
 static VKAPI_ATTR VkBool32 debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT                  messageTypes,
@@ -169,6 +172,31 @@ static VkDevice create_device(VkPhysicalDevice physical_device, uint32_t compute
     return device;
 }
 
+VkImage create_image(VkDevice device) {
+    const VkImageCreateInfo image_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = VK_FORMAT_R8G8B8A8_UNORM,
+        .extent.width = IMAGE_WIDTH,
+        .extent.height = IMAGE_HEIGHT,
+        .extent.depth = 1,
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+    };
+
+    VkImage image;
+    VkResult result = vkCreateImage(device, &image_info, NULL, &image);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create image: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    return image;
+}
+
 int main() {
     const VkDebugUtilsMessengerCreateInfoEXT debug_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -212,7 +240,14 @@ int main() {
     
     VkQueue compute_queue;
     vkGetDeviceQueue(device, compute_queue_index, 0, &compute_queue);
+
+    VkImage image = create_image(device);
+    if(!image) {
+        fprintf(stderr, "Cannot proceed without an image");
+        return EXIT_FAILURE;
+    }
     
+    vkDestroyImage(device, image, NULL);
     vkDestroyDevice(device, NULL);
     vkDestroyDebugUtilsMessengerEXT(instance, messenger, NULL);
     vkDestroyInstance(instance, NULL);
