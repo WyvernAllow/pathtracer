@@ -5,6 +5,8 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 
+#include <stb_image_write.h>
+
 #define ARRAY_LENGTH(x) (sizeof(x) / sizeof((x)[0]))
 
 static const char *VALIDATION_LAYERS[] = {
@@ -403,6 +405,41 @@ static VkPipeline create_compute_pipeline(VkDevice device, VkPipelineLayout pipe
     return pipeline;
 }
 
+static VkBuffer create_staging_buffer(VkPhysicalDevice physical_device, VkDevice device, VkDeviceSize size, VkDeviceMemory *buffer_memory) {
+    const VkBufferCreateInfo buffer_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VkBuffer staging_buffer;
+    VkResult result = vkCreateBuffer(device, &buffer_info, NULL, &staging_buffer);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create staging buffer: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    VkMemoryRequirements memory_requirements;
+    vkGetBufferMemoryRequirements(device, staging_buffer, &memory_requirements);
+    
+    const VkMemoryAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = memory_requirements.size,
+        .memoryTypeIndex = find_memory_type(physical_device, memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+    };
+
+    VkResult alloc_result = vkAllocateMemory(device, &alloc_info, NULL, buffer_memory);
+    if(alloc_result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to allocate memory for staging buffer: %s\n", string_VkResult(alloc_result));
+        return NULL;
+    }
+
+    vkBindBufferMemory(device, staging_buffer, *buffer_memory, 0);
+
+    return staging_buffer;
+}
+
 int main() {
     const VkDebugUtilsMessengerCreateInfoEXT debug_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -555,6 +592,10 @@ int main() {
         return EXIT_FAILURE;
     }
 
+    VkDeviceSize image_size = IMAGE_WIDTH * IMAGE_HEIGHT * 4;
+    VkDeviceMemory staging_buffer_memory;
+    VkBuffer staging_buffer = create_staging_buffer(physical_device, device, image_size, &staging_buffer_memory);
+    
     VkCommandBufferBeginInfo begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
     };
@@ -564,7 +605,7 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    const VkImageMemoryBarrier barrier = {
+    const VkImageMemoryBarrier general_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout = VK_IMAGE_LAYOUT_GENERAL,
@@ -587,12 +628,52 @@ int main() {
         0, 
         0, NULL, 
         0, NULL, 
-        1, &barrier
+        1, &general_barrier
     );
 
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
     vkCmdDispatch(command_buffer, (IMAGE_WIDTH + 7) / 8, (IMAGE_HEIGHT + 7) / 8, 1);
+
+    const VkImageMemoryBarrier transfer_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel = 0,
+        .subresourceRange.levelCount = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount = 1,
+        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+    };
+
+    vkCmdPipelineBarrier(
+        command_buffer, 
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 
+        0, 
+        0, NULL, 
+        0, NULL, 
+        1, &transfer_barrier
+    );
+
+    const VkBufferImageCopy region = {
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .imageSubresource.mipLevel = 0,
+        .imageSubresource.baseArrayLayer = 0,
+        .imageSubresource.layerCount = 1,
+        .imageOffset = {0, 0, 0},
+        .imageExtent = {IMAGE_WIDTH, IMAGE_HEIGHT, 1},
+    };
+
+    vkCmdCopyImageToBuffer(command_buffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging_buffer, 1, &region);
 
     if(vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
         fprintf(stderr, "Failed to end recording command buffers");
@@ -613,11 +694,28 @@ int main() {
 
     VkResult wait_result = vkWaitForFences(device, 1, &compute_completed_fence, VK_TRUE, UINT64_MAX);
     if(wait_result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to wait for fences");
+        fprintf(stderr, "Failed to wait for fences: %s\n", string_VkResult(wait_result));
         return EXIT_FAILURE;
     }
+
+    printf("Rendering completed\n");
+
+    void* data;
+    vkMapMemory(device, staging_buffer_memory, 0, image_size, 0, &data);
+
+    printf("Writing image...\n");
+    const char *filename = "output.png";
+    if (stbi_write_png("output.png", IMAGE_WIDTH, IMAGE_HEIGHT, 4, data, IMAGE_WIDTH * 4)) {
+        printf("Image saved as %s\n", filename);
+    } else {
+        printf("Failed to save image!\n");
+    }
+
+    vkUnmapMemory(device, staging_buffer_memory);
     
     vkDestroyShaderModule(device, shader_mod, NULL);
+    vkDestroyBuffer(device, staging_buffer, NULL);
+    vkFreeMemory(device, staging_buffer_memory, NULL);
     vkDestroyPipeline(device, pipeline, NULL);
     vkDestroyFence(device, compute_completed_fence, NULL);
     vkDestroyCommandPool(device, command_pool, NULL);
