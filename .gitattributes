@@ -1,1 +1,1 @@
-*.comp linguist-language=GLSL
+shaders/*.comp linguist-language=GLSL
