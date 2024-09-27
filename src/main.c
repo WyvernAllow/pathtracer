@@ -27,16 +27,16 @@ static VKAPI_ATTR VkBool32 debug_callback(
 
     switch (messageSeverity) {
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-        fprintf(stderr, "Trace: %s\n", pCallbackData->pMessage);
+        fprintf(stderr, "%s\n", pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-        fprintf(stderr, "Info: %s\n", pCallbackData->pMessage);
+        fprintf(stderr, "%s\n", pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-        fprintf(stderr, "Warn: %s\n", pCallbackData->pMessage);
+        fprintf(stderr, "%s\n", pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-        fprintf(stderr, "Error: %s\n", pCallbackData->pMessage);
+        fprintf(stderr, "%s\n", pCallbackData->pMessage);
         break;
     default:
         break;
