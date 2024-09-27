@@ -142,6 +142,33 @@ static uint32_t find_compute_family(VkPhysicalDevice physical_device) {
     exit(EXIT_FAILURE);
 }
 
+static VkDevice create_device(VkPhysicalDevice physical_device, uint32_t compute_queue) {
+    const float queue_priorities = 1.0f;
+    const VkDeviceQueueCreateInfo queue_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueCount = 1,
+        .queueFamilyIndex = compute_queue,
+        .pQueuePriorities = &queue_priorities,
+    };
+
+    const VkDeviceCreateInfo device_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .ppEnabledLayerNames = VALIDATION_LAYERS,
+        .enabledLayerCount = ARRAY_LENGTH(VALIDATION_LAYERS),
+        .pQueueCreateInfos = &queue_create_info,
+        .queueCreateInfoCount = 1,
+    };
+    
+    VkDevice device;
+    VkResult result = vkCreateDevice(physical_device, &device_create_info, NULL, &device);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create device utils messenger: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    return device;
+}
+
 int main() {
     const VkDebugUtilsMessengerCreateInfoEXT debug_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -176,8 +203,17 @@ int main() {
         return EXIT_FAILURE;
     }
 
-
-
+    uint32_t compute_queue_index = find_compute_family(physical_device);
+    VkDevice device = create_device(physical_device, compute_queue_index);
+    if(!device) {
+        fprintf(stderr, "Cannot proceed without a device");
+        return EXIT_FAILURE;
+    }
+    
+    VkQueue compute_queue;
+    vkGetDeviceQueue(device, compute_queue_index, 0, &compute_queue);
+    
+    vkDestroyDevice(device, NULL);
     vkDestroyDebugUtilsMessengerEXT(instance, messenger, NULL);
     vkDestroyInstance(instance, NULL);
     return EXIT_SUCCESS;
