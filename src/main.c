@@ -154,7 +154,7 @@ static VkDevice create_device(VkPhysicalDevice physical_device, uint32_t compute
         .pQueuePriorities = &queue_priorities,
     };
 
-    const VkDeviceCreateInfo device_create_info = {
+    const VkDeviceCreateInfo device_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .ppEnabledLayerNames = VALIDATION_LAYERS,
         .enabledLayerCount = ARRAY_LENGTH(VALIDATION_LAYERS),
@@ -163,9 +163,9 @@ static VkDevice create_device(VkPhysicalDevice physical_device, uint32_t compute
     };
     
     VkDevice device;
-    VkResult result = vkCreateDevice(physical_device, &device_create_info, NULL, &device);
+    VkResult result = vkCreateDevice(physical_device, &device_info, NULL, &device);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create device utils messenger: %s\n", string_VkResult(result));
+        fprintf(stderr, "Failed to create device : %s\n", string_VkResult(result));
         return NULL;
     }
 
