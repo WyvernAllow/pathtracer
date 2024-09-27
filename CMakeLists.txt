@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.5.0)
 project(pathtracer VERSION 0.1.0 LANGUAGES C)
 
 find_package(Vulkan REQUIRED)
+add_subdirectory(deps/stb_image_write)
 
 add_executable(${PROJECT_NAME}
     src/main.c
@@ -12,6 +13,7 @@ add_executable(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
     Vulkan::Vulkan
+    stb_image_write
 )
 
 set(SHADER_SOURCES
