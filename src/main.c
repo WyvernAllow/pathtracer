@@ -198,7 +198,8 @@ static VkImage create_image(VkDevice device) {
         .arrayLayers = 1,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+        .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
     VkImage image;
@@ -301,6 +302,47 @@ static VkPipelineLayout create_pipeline_layout(VkDevice device, VkDescriptorSetL
     return pipeline_layout;
 }
 
+static VkDescriptorPool create_descriptor_pool(VkDevice device) {
+    const VkDescriptorPoolSize pool_size = {
+        .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+        .descriptorCount = 1,
+    };
+
+    const VkDescriptorPoolCreateInfo pool_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = 1,
+        .pPoolSizes = &pool_size,
+        .maxSets = 1
+    };
+
+    VkDescriptorPool descriptor_pool;
+    VkResult result = vkCreateDescriptorPool(device, &pool_info, NULL, &descriptor_pool);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create descriptor pool: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    return descriptor_pool;
+}
+
+static VkDescriptorSet create_descriptor_set(VkDevice device, VkDescriptorPool descriptor_pool, VkDescriptorSetLayout layout) {
+    const VkDescriptorSetAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &layout,
+    };
+
+    VkDescriptorSet descriptor_set;
+    VkResult result = vkAllocateDescriptorSets(device, &alloc_info, &descriptor_set);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create descriptor set: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    return descriptor_set;
+}
+
 int main() {
     const VkDebugUtilsMessengerCreateInfoEXT debug_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -374,7 +416,38 @@ int main() {
         fprintf(stderr, "Cannot proceed without a pipeline layout");
         return EXIT_FAILURE;
     }
+
+    VkDescriptorPool descriptor_pool = create_descriptor_pool(device);
+    if(!descriptor_pool)  {
+        fprintf(stderr, "Cannot proceed without a descriptor pool");
+        return EXIT_FAILURE;
+    }
+
+    VkDescriptorSet descriptor_set = create_descriptor_set(device, descriptor_pool, descriptor_set_layout);
+    if(!descriptor_set) {
+        fprintf(stderr, "Cannot proceed without a descriptor set");
+        return EXIT_FAILURE;
+    }
+
+    const VkDescriptorImageInfo descriptor_image_info = {
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .imageView = image_view,
+    };
+
+    const VkWriteDescriptorSet descriptor_write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptor_set,
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+        .descriptorCount = 1,
+        .pImageInfo = &descriptor_image_info,
+    };
+
+    vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, NULL);
     
+    vkDestroyDescriptorPool(device, descriptor_pool, NULL);
+    vkDestroyPipelineLayout(device, pipeline_layout, NULL);
     vkDestroyDescriptorSetLayout(device, descriptor_set_layout, NULL);
     vkDestroyImageView(device, image_view, NULL);
     vkFreeMemory(device, image_memory, NULL);
