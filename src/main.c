@@ -17,8 +17,8 @@ static const char *EXTENSIONS[] = {
     VK_EXT_DEBUG_UTILS_EXTENSION_NAME
 };
 
-static const uint32_t IMAGE_WIDTH = 800;
-static const uint32_t IMAGE_HEIGHT = 450;
+static const uint32_t IMAGE_WIDTH = 1920;
+static const uint32_t IMAGE_HEIGHT = 1080;
 
 static VKAPI_ATTR VkBool32 debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
