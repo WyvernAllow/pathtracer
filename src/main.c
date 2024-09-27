@@ -172,6 +172,20 @@ static VkDevice create_device(VkPhysicalDevice physical_device, uint32_t compute
     return device;
 }
 
+static uint32_t find_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties) {
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
+
+    for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) {
+        if ((type_filter & (1 << i)) && (memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    fprintf(stderr, "Failed to find suitable memory type\n");
+    exit(EXIT_FAILURE);
+}
+
 static VkImage create_image(VkDevice device) {
     const VkImageCreateInfo image_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -195,6 +209,55 @@ static VkImage create_image(VkDevice device) {
     }
 
     return image;
+}
+
+static VkImageView create_image_view(VkDevice device, VkImage image) {
+    const VkImageViewCreateInfo image_view_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = VK_FORMAT_R8G8B8A8_UNORM,
+        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel = 0,
+        .subresourceRange.levelCount = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount = 1,
+    };
+
+    VkImageView image_view;
+    VkResult result = vkCreateImageView(device, &image_view_info, NULL, &image_view);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create image view: %s\n", string_VkResult(result));
+        return NULL;
+    }
+    
+    return image_view;
+}
+
+static VkDeviceMemory allocate_image(VkPhysicalDevice physical_device, VkDevice device, VkImage image) {
+    VkMemoryRequirements memory_requirements;
+    vkGetImageMemoryRequirements(device, image, &memory_requirements);
+
+    const VkMemoryAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = memory_requirements.size,
+        .memoryTypeIndex = find_memory_type(physical_device, memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+    };
+
+    VkDeviceMemory image_memory;
+    VkResult result = vkAllocateMemory(device, &alloc_info, NULL, &image_memory);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to allocate memory for image: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    VkResult bind_result = vkBindImageMemory(device, image, image_memory, 0);
+    if(bind_result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to bind image memory: %s\n", string_VkResult(bind_result));
+        return NULL;
+    }
+
+    return image_memory;
 }
 
 int main() {
@@ -246,7 +309,21 @@ int main() {
         fprintf(stderr, "Cannot proceed without an image");
         return EXIT_FAILURE;
     }
+
+    VkDeviceMemory image_memory = allocate_image(physical_device, device, image);
+    if(!image_memory) {
+        fprintf(stderr, "Cannot proceed without allocated image memory");
+        return EXIT_FAILURE;
+    }
+
+    VkImageView image_view = create_image_view(device, image);
+    if(!image_view) {
+        fprintf(stderr, "Cannot proceed without an image view");
+        return EXIT_FAILURE;
+    }
     
+    vkDestroyImageView(device, image_view, NULL);
+    vkFreeMemory(device, image_memory, NULL);
     vkDestroyImage(device, image, NULL);
     vkDestroyDevice(device, NULL);
     vkDestroyDebugUtilsMessengerEXT(instance, messenger, NULL);
