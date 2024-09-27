@@ -127,7 +127,7 @@ vec3 trace(vec3 ray_orig, vec3 ray_dir, inout uint state) {
     return incoming_light;
 }
 
-#define RAYS_PER_PIXEL 10000
+#define RAYS_PER_PIXEL 200
 
 #define GAMMA 2.2
 
