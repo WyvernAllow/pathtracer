@@ -17,8 +17,8 @@ static const char *EXTENSIONS[] = {
     VK_EXT_DEBUG_UTILS_EXTENSION_NAME
 };
 
-static const uint32_t IMAGE_WIDTH = 4096;
-static const uint32_t IMAGE_HEIGHT = 4096;
+static const uint32_t IMAGE_WIDTH = 800;
+static const uint32_t IMAGE_HEIGHT = 450;
 
 static VKAPI_ATTR VkBool32 debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
@@ -633,7 +633,11 @@ int main() {
 
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
-    vkCmdDispatch(command_buffer, (IMAGE_WIDTH + 7) / 8, (IMAGE_HEIGHT + 7) / 8, 1);
+
+    uint32_t num_work_groups_width = (IMAGE_WIDTH + 31) / 32;
+    uint32_t num_work_groups_height = (IMAGE_HEIGHT + 31) / 32;
+
+    vkCmdDispatch(command_buffer, num_work_groups_width, num_work_groups_height, 1);
 
     const VkImageMemoryBarrier transfer_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
