@@ -28,9 +28,9 @@ struct sphere {
 
 const sphere spheres[4] = sphere[4](
     sphere(vec3(0.0, 0.0, -4.0), 1.0, material(vec3(1.0, 0.1, 0.1), vec3(0.0, 0.0, 0.0), 0.5)),
-    sphere(vec3(-1.4, -0.5, -3.7), 0.5, material(vec3(0.8, 0.8, 0.8), vec3(0.0, 0.0, 0.0), 0.7)),
-    sphere(vec3(0.0, -101.0, -4.0), 100.0, material(vec3(0.4, 1.0, 0.4), vec3(0.0, 0.0, 0.0), 0.0)),
-    sphere(vec3(10.0, 10.0, 0.0), 7.0, material(vec3(0.0, 0.0, 0.0), vec3(1.0 * 3, 0.8 * 2, 0.6 * 2), 0.0))
+    sphere(vec3(-1.4, -0.5, -3.7), 0.5, material(vec3(0.8, 0.8, 0.8), vec3(0.0, 0.0, 0.0), 0.3)),
+    sphere(vec3(0.0, -101.0, -4.0), 100.0, material(vec3(0.4, 1.0, 0.4), vec3(0.0, 0.0, 0.0), 1.0)),
+    sphere(vec3(10.0, 10.0, 0.0), 7.0, material(vec3(0.0, 0.0, 0.0), vec3(1.0 * 3, 0.8 * 2, 0.6 * 2), 1.0))
 );
 
 struct hit_result {
@@ -113,7 +113,7 @@ vec3 trace(vec3 ray_orig, vec3 ray_dir, inout uint state) {
             vec3 reflect_dir = reflect(ray_dir, result.normal);
             vec3 diffuse_dir = normalize(result.normal + random_dir(state));
 
-            ray_dir = mix(diffuse_dir, reflect_dir, mat.roughness);
+            ray_dir = mix(reflect_dir, diffuse_dir, mat.roughness);
 
             incoming_light += mat.emission * ray_color;
             ray_color *= mat.albedo;
