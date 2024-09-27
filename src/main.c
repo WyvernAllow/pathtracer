@@ -6,12 +6,43 @@
 
 #define ARRAY_LENGTH(x) (sizeof(x) / sizeof((x)[0]))
 
+static const char *VALIDATION_LAYERS[] = {
+    "VK_LAYER_KHRONOS_validation",
+};
+
+static const char *EXTENSIONS[] = {
+    VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+};
+
+static const uint8_t *read_file(const char *filename, size_t *len) {
+    FILE *file = fopen(filename, "rb");
+    if(!file) {
+        perror(filename);
+        return NULL;
+    }
+
+    fseek(file, 0, SEEK_END);
+    size_t file_size = (size_t)ftell(file);
+    fseek(file, SEEK_SET, 0);
+
+    uint8_t *buffer = malloc(sizeof(uint8_t) * file_size);
+    size_t bytes_read = fread(buffer, sizeof(uint8_t), file_size, file);
+    if(bytes_read != file_size) {
+        perror(filename);
+        return NULL;
+    }
+
+    *len = file_size;
+    return buffer;
+}
+
 static VKAPI_ATTR VkBool32 debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT                  messageTypes,
     const VkDebugUtilsMessengerCallbackDataEXT*      pCallbackData,
     void*                                            pUserData) {
 
+    // pMessage is NULL if messageTypes is equal to VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT.
     if(!pCallbackData->pMessage) {
         return VK_FALSE;
     }
@@ -46,22 +77,14 @@ static VkInstance create_instance(const VkDebugUtilsMessengerCreateInfoEXT *debu
         .pEngineName = NULL,
     };
 
-    const char *layers[] = {
-        "VK_LAYER_KHRONOS_validation",
-    };
-
-    const char *extensions[] = {
-        VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-    };
-
     const VkInstanceCreateInfo instance_info = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = debug_info,
         .pApplicationInfo = &app_info,
-        .ppEnabledLayerNames = layers,
-        .enabledLayerCount = ARRAY_LENGTH(layers),
-        .ppEnabledExtensionNames = extensions,
-        .enabledExtensionCount = ARRAY_LENGTH(extensions),
+        .ppEnabledLayerNames = VALIDATION_LAYERS,
+        .enabledLayerCount = ARRAY_LENGTH(VALIDATION_LAYERS),
+        .ppEnabledExtensionNames = EXTENSIONS,
+        .enabledExtensionCount = ARRAY_LENGTH(EXTENSIONS),
     };
 
     VkInstance instance;
@@ -90,6 +113,7 @@ static int rate_physical_device(VkPhysicalDevice physical_device) {
     vkGetPhysicalDeviceProperties(physical_device, &properties);
 
     int score = 0;
+
     if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
         score += 100;
     }
@@ -102,16 +126,10 @@ static VkPhysicalDevice find_physical_device(VkInstance instance) {
     vkEnumeratePhysicalDevices(instance, &physical_device_count, NULL);
 
     VkPhysicalDevice *physical_devices = malloc(sizeof(VkPhysicalDevice) * physical_device_count);
-    if(!physical_devices) {
-        fprintf(stderr, "Failed to find a physical device: out of memory");
-        return NULL;
-    }
-
     vkEnumeratePhysicalDevices(instance, &physical_device_count, physical_devices);
 
     int highest_score = INT_MIN;
     VkPhysicalDevice best_physical_device = NULL;
-
     for(uint32_t i = 0; i < physical_device_count; i++) {
         VkPhysicalDevice physical_device = physical_devices[i];
         int score = rate_physical_device(physical_device);
@@ -123,6 +141,27 @@ static VkPhysicalDevice find_physical_device(VkInstance instance) {
 
     free(physical_devices);
     return best_physical_device;
+}
+
+static uint32_t find_compute_family(VkPhysicalDevice physical_device) {
+    uint32_t property_count;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &property_count, NULL);
+
+    VkQueueFamilyProperties *properties = malloc(sizeof(VkQueueFamilyProperties) * property_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &property_count, properties);
+
+    for(uint32_t i = 0; i < property_count; i++) {
+        VkQueueFamilyProperties queue = properties[i];
+        if(queue.queueFlags & VK_QUEUE_COMPUTE_BIT) {
+            free(properties);
+            return i;
+        }
+    }
+
+    // All Vulkan implementations are required to support compute, so this code should be unreachable.
+    free(properties);
+    fprintf(stderr, "Error: No compute queue family found!\n");
+    exit(EXIT_FAILURE);
 }
 
 int main() {
@@ -159,7 +198,7 @@ int main() {
     }
 
     
-    
+
     vkDestroyDebugUtilsMessengerEXT(instance, messenger, NULL);
     vkDestroyInstance(instance, NULL);
     return EXIT_SUCCESS;
