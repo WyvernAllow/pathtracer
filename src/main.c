@@ -172,7 +172,7 @@ static VkDevice create_device(VkPhysicalDevice physical_device, uint32_t compute
     return device;
 }
 
-VkImage create_image(VkDevice device) {
+static VkImage create_image(VkDevice device) {
     const VkImageCreateInfo image_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
