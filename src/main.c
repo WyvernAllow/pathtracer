@@ -1,3 +1,4 @@
+#include "utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -343,6 +344,65 @@ static VkDescriptorSet create_descriptor_set(VkDevice device, VkDescriptorPool d
     return descriptor_set;
 }
 
+static VkCommandPool create_command_pool(VkDevice device, uint32_t compute_queue_index) {
+    const VkCommandPoolCreateInfo command_pool_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .queueFamilyIndex = compute_queue_index,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+    };
+
+    VkCommandPool command_pool;
+    VkResult result = vkCreateCommandPool(device, &command_pool_info, NULL, &command_pool);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create command pool: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    return command_pool;
+}
+
+static VkCommandBuffer create_command_buffer(VkDevice device, VkCommandPool command_pool) {
+    const VkCommandBufferAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = command_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer buffer;
+    VkResult result = vkAllocateCommandBuffers(device, &alloc_info, &buffer);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create command buffer: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    return buffer;
+}
+
+static VkPipeline create_compute_pipeline(VkDevice device, VkPipelineLayout pipeline_layout, VkShaderModule shader) {
+    const VkPipelineShaderStageCreateInfo compute_shader_stage = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+        .module = shader,
+        .pName = "main"
+    };
+
+    const VkComputePipelineCreateInfo compute_pipeline_info = {
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .layout = pipeline_layout,
+        .stage = compute_shader_stage,
+    };
+    
+    VkPipeline pipeline;
+    VkResult result = vkCreateComputePipelines(device, NULL, 1, &compute_pipeline_info, NULL, &pipeline);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create compute pipeline: %s\n", string_VkResult(result));
+        return NULL;
+    }
+
+    return pipeline;
+}
+
 int main() {
     const VkDebugUtilsMessengerCreateInfoEXT debug_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -445,7 +505,122 @@ int main() {
     };
 
     vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, NULL);
+
+    VkCommandPool command_pool = create_command_pool(device, compute_queue_index);
+    if(!command_pool) {
+        fprintf(stderr, "Cannot proceed without a command pool");
+        return EXIT_FAILURE;
+    }
+
+    VkCommandBuffer command_buffer = create_command_buffer(device, command_pool);
+    if(!command_buffer) {
+        fprintf(stderr, "Cannot proceed without a command buffer");
+        return EXIT_FAILURE;
+    }
+
+    VkFence compute_completed_fence;
+    {
+        const VkFenceCreateInfo fence_info = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        };
+
+        VkResult result = vkCreateFence(device, &fence_info, NULL, &compute_completed_fence);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create fence");
+            return EXIT_FAILURE;
+        }
+    }
+
+    size_t shader_code_len;
+    const uint8_t *shader_code = read_file("shaders/pathtracer.comp.spv", &shader_code_len);
+
+    const VkShaderModuleCreateInfo shader_mod_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pCode = (uint32_t*)shader_code,
+        .codeSize = shader_code_len,
+    };
+
+    VkShaderModule shader_mod;
+    {
+        VkResult result = vkCreateShaderModule(device, &shader_mod_info, NULL, &shader_mod);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create shader module: %s\n", string_VkResult(result));
+            return EXIT_FAILURE;
+        }
+    }
+
+    VkPipeline pipeline = create_compute_pipeline(device, pipeline_layout, shader_mod);
+    if(!pipeline) {
+        fprintf(stderr, "Cannot proceed without a pipeline");
+        return EXIT_FAILURE;
+    }
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+    };
+
+    if(vkBeginCommandBuffer(command_buffer, &begin_info) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to begin recording command buffers");
+        return EXIT_FAILURE;
+    }
+
+    const VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel = 0,
+        .subresourceRange.levelCount = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount = 1,
+        .srcAccessMask = 0,
+        .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+    };
+
+    vkCmdPipelineBarrier(
+        command_buffer, 
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+        0, 
+        0, NULL, 
+        0, NULL, 
+        1, &barrier
+    );
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
+    vkCmdDispatch(command_buffer, (IMAGE_WIDTH + 7) / 8, (IMAGE_HEIGHT + 7) / 8, 1);
+
+    if(vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to end recording command buffers");
+        return EXIT_FAILURE;
+    }
+
+    VkSubmitInfo submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+
+    VkResult submit_result = vkQueueSubmit(compute_queue, 1, &submit_info, compute_completed_fence);
+    if(submit_result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to submit command buffers");
+        return EXIT_FAILURE;
+    }
+
+    VkResult wait_result = vkWaitForFences(device, 1, &compute_completed_fence, VK_TRUE, UINT64_MAX);
+    if(wait_result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to wait for fences");
+        return EXIT_FAILURE;
+    }
     
+    vkDestroyShaderModule(device, shader_mod, NULL);
+    vkDestroyPipeline(device, pipeline, NULL);
+    vkDestroyFence(device, compute_completed_fence, NULL);
+    vkDestroyCommandPool(device, command_pool, NULL);
     vkDestroyDescriptorPool(device, descriptor_pool, NULL);
     vkDestroyPipelineLayout(device, pipeline_layout, NULL);
     vkDestroyDescriptorSetLayout(device, descriptor_set_layout, NULL);

@@ -6,6 +6,8 @@ find_package(Vulkan REQUIRED)
 add_executable(${PROJECT_NAME}
     src/main.c
     src/extensions.c
+    src/utils.h
+    src/utils.c
 )
 
 target_link_libraries(${PROJECT_NAME}
