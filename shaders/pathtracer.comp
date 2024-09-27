@@ -1,7 +1,10 @@
 #version 450
-layout(binding=0, rgba8) uniform writeonly image2D output_image;
 
-layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+#define RAYS_PER_PIXEL 200
+#define MAX_BOUNCE_COUNT 10
+#define GAMMA 2.2
+
+layout(binding=0, rgba8) uniform writeonly image2D output_image;
 
 uint pcg_hash(uint in_state) {
     uint state = in_state * 747796405u + 2891336453u;
@@ -89,8 +92,6 @@ hit_result calculate_ray_collision(vec3 ray_origin, vec3 ray_dir) {
     return closest_hit;
 }
 
-#define MAX_BOUNCE_COUNT 10
-
 vec3 random_dir(inout uint state) {
     float x = rand_float(state) * 2.0 - 1.0;
     float y = rand_float(state) * 2.0 - 1.0;
@@ -127,10 +128,6 @@ vec3 trace(vec3 ray_orig, vec3 ray_dir, inout uint state) {
     return incoming_light;
 }
 
-#define RAYS_PER_PIXEL 200
-
-#define GAMMA 2.2
-
 vec3 tonemap(vec3 color) {
     const float A = 2.51;
     const float B = 0.03;
@@ -145,6 +142,7 @@ vec3 apply_gamma_correction(vec3 color) {
     return pow(color, vec3(1.0 / GAMMA));
 }
 
+layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 void main() {
     ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     ivec2 resolution = imageSize(output_image);
