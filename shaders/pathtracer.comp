@@ -1,6 +1,6 @@
 #version 450
 
-#define RAYS_PER_PIXEL 200
+#define RAYS_PER_PIXEL 1000
 #define MAX_BOUNCE_COUNT 10
 #define GAMMA 2.2
 
